@@ -1,0 +1,73 @@
+# ==========================================
+# Compilación C++ y Binarios del Proyecto
+# ==========================================
+# Ejecutable principal y posibles binarios de prueba
+rw
+rw.exe
+test_*
+*_test
+*.out
+*.app
+
+# Archivos objeto, cabeceras precompiladas y librerías
+*.o
+*.obj
+*.ko
+*.gch
+*.pch
+*.d
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# ==========================================
+# Herramientas de Depuración y Concurrencia
+# ==========================================
+# Valgrind / Helgrind / Callgrind
+vgcore.*
+helgrind.log
+valgrind.log
+callgrind.out.*
+massif.out.*
+
+# Core dumps y logs de Sanitizers (TSan / ASan)
+core
+core.*
+tsan.log*
+asan.log*
+
+# ==========================================
+# Scripts de Experimentos y Datos Temporales
+# ==========================================
+# Archivos de salida crudos de las pruebas E1/E2
+*.csv
+*.tsv
+*.log
+resultados_raw/
+trazas_temp/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ==========================================
+# Editores e IDEs (VS Code, CLion, etc.)
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==========================================
+# Sistema Operativo y Compilación de Informe
+# ==========================================
+.DS_Store
+Thumbs.db
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.toc
