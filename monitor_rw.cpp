@@ -18,7 +18,7 @@ bool MonitorRW::puede_entrar_lectura(long turno){
     }else if (politica == Politica::Escritores){
         return (!escritora_activa && escritores_esperando == 0);
     }else if (politica == Politica::Fifo){
-        return (!escritora_activa && turno <= turno_actual);
+        return (!escritora_activa && turno == turno_actual);
     }
     return false;
     
