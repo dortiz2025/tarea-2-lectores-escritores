@@ -5,8 +5,7 @@
 
 ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                                       Politica politica) {
-    // En este paso solo reconstruimos el estado; las reglas de cada politica
-    // se comprobaran despues.
+    // Las reglas especificas de cada politica se comprobaran despues.
     (void)politica;
 
     struct InformacionSolicitud {
@@ -73,6 +72,24 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
             }
             if (hebras_dentro.find(paso.hebra) != hebras_dentro.end()) {
                 return crear_error(indice, "la hebra entra mientras ya esta dentro del recurso");
+            }
+
+            // Una escritora necesita el recurso para ella sola.
+            if (paso.tipo == Tipo::Escritora &&
+                (cantidad_lectoras_dentro > 0 || cantidad_escritoras_dentro > 0)) {
+                return crear_error(
+                    indice,
+                    "una escritora entra mientras hay otra hebra activa"
+                );
+            }
+
+            // Una lectora puede compartir el recurso con otras lectoras,
+            // pero no puede coincidir con una escritora.
+            if (paso.tipo == Tipo::Lectora && cantidad_escritoras_dentro > 0) {
+                return crear_error(
+                    indice,
+                    "una lectora entra mientras hay una escritora activa"
+                );
             }
 
             // La solicitud deja de estar pendiente y pasa a estar dentro.
