@@ -5,9 +5,6 @@
 
 ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                                       Politica politica) {
-    // Las reglas especificas de cada politica se comprobaran despues.
-    (void)politica;
-
     struct InformacionSolicitud {
         Tipo tipo;
         long turno; // Se conserva para comprobar FIFO en el siguiente paso.
@@ -24,9 +21,12 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
     int cantidad_escritoras_pendientes = 0;
     int cantidad_lectoras_dentro = 0;
     int cantidad_escritoras_dentro = 0;
+    std::uint64_t evidencia = 0;
+    std::uint64_t siguiente_turno_solicitud = 0;
+    std::uint64_t siguiente_turno_entrada = 0;
 
-    const auto crear_error = [](std::size_t indice, const std::string& regla) {
-        return ResultadoVerificacion{false, indice, regla, 0};
+    const auto crear_error = [&evidencia](std::size_t indice, const std::string& regla) {
+        return ResultadoVerificacion{false, indice, regla, evidencia};
     };
 
     // Recorremos la traza en orden, como si actualizaramos el estado paso a paso.
@@ -47,6 +47,40 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                 return crear_error(indice, "la hebra solicita mientras ya esta dentro del recurso");
             }
 
+            // En FIFO cada solicitud recibe el siguiente turno disponible.
+            if (politica == Politica::Fifo &&
+                (paso.turno < 0 ||
+                 static_cast<std::uint64_t>(paso.turno) != siguiente_turno_solicitud)) {
+                return crear_error(indice, "el turno de Pide no es consecutivo en FIFO");
+            }
+
+            // Esta evidencia cuenta lectoras que pidieron mientras una
+            // escritora esperaba bajo la prioridad de escritores.
+            if (politica == Politica::Escritores &&
+                paso.tipo == Tipo::Lectora &&
+                cantidad_escritoras_pendientes > 0) {
+                ++evidencia;
+            }
+
+            // Con prioridad de lectores, una lectora entra de inmediato si
+            // no hay una escritora activa: su Entra debe ser el paso siguiente.
+            if (politica == Politica::Lectores &&
+                paso.tipo == Tipo::Lectora &&
+                cantidad_escritoras_dentro == 0) {
+                const bool siguiente_es_su_entrada =
+                    indice + 1 < traza.size() &&
+                    traza[indice + 1].hebra == paso.hebra &&
+                    traza[indice + 1].tipo == Tipo::Lectora &&
+                    traza[indice + 1].accion == Accion::Entra;
+
+                if (!siguiente_es_su_entrada) {
+                    return crear_error(
+                        indice,
+                        "una lectora pidio sin escritora activa y la anotacion siguiente no fue su Entra"
+                    );
+                }
+            }
+
             const InformacionSolicitud informacion{
                 paso.tipo, paso.turno, indice,
                 std::numeric_limits<std::size_t>::max()
@@ -57,6 +91,9 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                 ++cantidad_lectoras_pendientes;
             } else {
                 ++cantidad_escritoras_pendientes;
+            }
+            if (politica == Politica::Fifo) {
+                ++siguiente_turno_solicitud;
             }
             break;
         }
@@ -83,6 +120,39 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                 );
             }
 
+            // Una escritora no puede adelantarse a lectoras que ya esperan.
+            if (politica == Politica::Lectores &&
+                paso.tipo == Tipo::Escritora &&
+                cantidad_lectoras_pendientes > 0) {
+                return crear_error(
+                    indice,
+                    "una escritora entra mientras hay lectoras pendientes"
+                );
+            }
+
+            // Con prioridad de escritores, las lectoras esperan mientras
+            // haya al menos una escritora pendiente.
+            if (politica == Politica::Escritores &&
+                paso.tipo == Tipo::Lectora &&
+                cantidad_escritoras_pendientes > 0) {
+                return crear_error(
+                    indice,
+                    "una lectora entra mientras hay escritoras pendientes"
+                );
+            }
+
+            // En FIFO, el turno de entrada debe coincidir con el turno que
+            // recibio la hebra al pedir acceso y con el siguiente esperado.
+            if (politica == Politica::Fifo) {
+                if (solicitud_encontrada->second.turno != paso.turno) {
+                    return crear_error(indice, "el turno de Entra no coincide con su Pide");
+                }
+                if (paso.turno < 0 ||
+                    static_cast<std::uint64_t>(paso.turno) != siguiente_turno_entrada) {
+                    return crear_error(indice, "las entradas no respetan el orden FIFO");
+                }
+            }
+
             // Una lectora puede compartir el recurso con otras lectoras,
             // pero no puede coincidir con una escritora.
             if (paso.tipo == Tipo::Lectora && cantidad_escritoras_dentro > 0) {
@@ -90,6 +160,26 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
                     indice,
                     "una lectora entra mientras hay una escritora activa"
                 );
+            }
+
+            // Evidencia de que la prioridad de lectores fue puesta a prueba:
+            // la lectora entra aunque ya haya escritoras esperando.
+            if (politica == Politica::Lectores &&
+                paso.tipo == Tipo::Lectora &&
+                cantidad_escritoras_pendientes > 0) {
+                ++evidencia;
+            }
+
+            // En FIFO, una lectora entra concurrentemente con otra si ya
+            // habia al menos una lectora dentro del recurso.
+            if (politica == Politica::Fifo &&
+                paso.tipo == Tipo::Lectora &&
+                cantidad_lectoras_dentro > 0) {
+                ++evidencia;
+            }
+
+            if (politica == Politica::Fifo) {
+                ++siguiente_turno_entrada;
             }
 
             // La solicitud deja de estar pendiente y pasa a estar dentro.
@@ -154,5 +244,5 @@ ResultadoVerificacion verificar_traza(const std::vector<AnotacionTraza>& traza,
         return crear_error(primer_indice_incompleto, mensaje_incompleto);
     }
 
-    return ResultadoVerificacion{true, 0, "", 0};
+    return ResultadoVerificacion{true, 0, "", evidencia};
 }
